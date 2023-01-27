@@ -1,0 +1,29 @@
+trigger:
+- master
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  ACR_NAME: 'myACR' # Replace with your ACR name
+  IMAGE_NAME: 'myimage' # Replace with your image name
+  IMAGE_TAG: '$(Build.BuildId)'
+
+steps:
+- task: Docker@2
+  inputs:
+    command: 'buildAndPush'
+    containerRegistry: $(ACR_NAME)
+    tags: |
+      $(IMAGE_NAME):$(IMAGE_TAG)
+      $(IMAGE_NAME):latest
+
+- task: CopyFiles@2
+  inputs:
+    sourceFolder: '.'
+    targetFolder: '$(Build.ArtifactStagingDirectory)'
+
+- task: PublishBuildArtifacts@1
+  inputs:
+    pathToPublish: '$(Build.ArtifactStagingDirectory)'
+    artifactName: '$(IMAGE_NAME)-manifest'

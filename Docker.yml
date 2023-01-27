@@ -1,0 +1,53 @@
+trigger:
+  - master
+pool:
+  name: ReeftPoc-Pool
+variables:
+- group: Configuration_Variables
+- name: imageName
+  value: 'organizationservice'
+- name: dotNetCoreVersion
+  value: '6.0.x'
+- name: serviceName
+  value: 'organization-service'
+- name: tag
+  value: 'Build.BuildNumber'
+steps:
+  # - task: UseDotNet@2
+  #   displayName: 'Using .Net Core sdk: $(dotNetCoreVersion)'
+  #   inputs:
+  #     version: $(dotNetCoreVersion)
+  - task: Docker@2
+    displayName: Build Docker Image
+    inputs:
+      containerRegistry: '$(azureACRSubscription)'
+      repository: '$(imageName)'
+      command: 'build'
+      Dockerfile: 'Reeft/Organization/OrganizationService/Reeft.OrganizationService/Dockerfile'
+      buildContext: './'
+      tags: |
+        $(tag)
+        latest
+      arguments: '--build-arg Nuget_CustomFeedUserName=$(username)      --build-arg Nuget_CustomFeedPassword =$(System.AccessToken)'
+    env:
+      ASPNETCORE_ENVIRONMENT: Stagging
+  - task: Docker@2
+    displayName: Push Image to ACR
+    inputs:
+      containerRegistry: 'IngressContainerRegistry'
+      repository: '$(imageName)'
+      command: 'push'
+      tags: |
+        $(tag)
+        latest
+  # - task: Bash@3
+  #   displayName: 'Rename Version in Kubernetes Deployment file: serviceName: $(Build.BuildNumber)'
+  #   inputs:
+  #     targetType: 'inline'
+  #     script: "echo \"$(System.DefaultWorkingDirectory)/$(serviceName)/manifests-aks\"\ncat \"$(serviceName)/manifests-aks/$(serviceName)-k8s-deployment-development.yaml\"\ncat \"$(serviceName)/manifests-aks/$(serviceName)-k8s-deployment-staging.yaml\"\ncat \"$(serviceName)/manifests-aks/$(serviceName)-k8s-deployment-production.yaml\"\nsed -i 's~:latest~:$(Build.BuildNumber)~g' \"$(serviceName)/manifests-aks/$(serviceName)-k8s-deployment-development.yaml\"   \nsed -i 's~:latest~:$(Build.BuildNumber)~g' \"$(serviceName)/manifests-aks/$(serviceName)-k8s-deployment-staging.yaml\" \nsed -i 's~:latest~:$(Build.BuildNumber)~g' \"$(serviceName)/manifests-aks/$(serviceName)-k8s-deployment-production.yaml\"   \n"
+  - task: PublishPipelineArtifact@1
+    displayName: 'Publish Artifacts: $(serviceName)-artifacts'
+    inputs:
+      targetPath: $(System.DefaultWorkingDirectory)/$(serviceName)/manifests-aks
+      artifactName: $(serviceName)-artifacts
+
