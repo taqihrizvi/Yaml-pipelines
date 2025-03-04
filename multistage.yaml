@@ -1,0 +1,99 @@
+trigger:
+  - main
+  - develop
+
+pool:
+  vmImage: 'windows-latest'
+
+stages:
+- stage: Build_Test
+  displayName: 'Build and Test'
+  jobs:
+  - job: BuildAndTest
+    steps:
+    - task: DotNetCoreCLI@2
+      displayName: Restore
+      inputs:
+        command: restore
+        projects: '**/ProjectName.csproj'
+
+    - task: DotNetCoreCLI@2
+      displayName: Build
+      inputs:
+        projects: '**/ProjectName.csproj'
+        arguments: '--no-restore'
+
+    - task: DotNetCoreCLI@2
+      displayName: Test
+      inputs:
+        command: test
+        projects: '**/*[Tt]ests/*.csproj'
+        arguments: '--no-restore --no-build'
+
+    - task: DotNetCoreCLI@2
+      displayName: 'Publish WebApi'
+      inputs:
+        command: publish
+        publishWebProjects: false
+        projects: '**/ProjectName.csproj'
+        arguments: '--configuration $(BuildConfiguration) --output $(Build.ArtifactStagingDirectory)'
+
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish Artifact'
+      inputs:
+        PathtoPublish: $(Build.ArtifactStagingDirectory)
+
+- stage: Deploy_Staging
+  displayName: 'Deploy to Staging'
+  dependsOn: Build_Test
+  jobs:
+  - deployment: Staging
+    environment: Staging
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - task: DownloadBuildArtifacts@0
+            displayName: 'Download Artifacts'
+            inputs:
+              artifactName: drop
+              downloadPath: $(Build.ArtifactStagingDirectory)
+
+          - script: echo "Deploying to Staging..."
+            displayName: 'Deploy to Staging'
+
+- stage: Approval_Prod
+  displayName: 'Approval Before Production'
+  dependsOn: Deploy_Staging
+  jobs:
+  - job: WaitForApproval
+    displayName: 'Wait for Manual Approval'
+    pool: server
+    timeoutInMinutes: 1440  # Wait for 24 hours
+    steps:
+    - task: ManualValidation@0
+      displayName: 'Manual Approval Required'
+      inputs:
+        notifyUsers: 'user@example.com'
+        instructions: 'Approve to deploy to Production'
+        onTimeout: 'reject'
+
+- stage: Deploy_Production
+  displayName: 'Deploy to Production'
+  dependsOn: Approval_Prod
+  condition: succeeded()
+  jobs:
+  - deployment: Production
+    environment: Production
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - task: DownloadBuildArtifacts@0
+            displayName: 'Download Artifacts'
+            inputs:
+              artifactName: drop
+              downloadPath: $(Build.ArtifactStagingDirectory)
+
+          - script: echo "Deploying to Production..."
+            displayName: 'Deploy to Production'
